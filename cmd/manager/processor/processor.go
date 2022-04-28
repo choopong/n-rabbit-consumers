@@ -50,6 +50,7 @@ func (p *processor) Process(routingKey string, b []byte) (err error) {
 	err = json.Unmarshal(b, &data)
 	if err != nil {
 		logger.Error(err)
+		return nil
 	}
 	n := (data.ID % p.numWorkers) + 1
 	p.channel.Publish(fmt.Sprintf("%s.%d", p.exchange, n), routingKey, b)

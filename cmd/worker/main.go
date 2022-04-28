@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"strconv"
@@ -30,27 +29,29 @@ func init() {
 var rabbitMQURI string
 var rabbitMQName string
 var rabbitMQRetryExchange string
-var workerID int
+var numWorkers int
 
 func init() {
 	rabbitMQURI = os.Getenv("RABBIT_MQ_URI")
 	rabbitMQName = os.Getenv("RABBIT_MQ_WORKER_QUEUE_NAME")
 	rabbitMQRetryExchange = os.Getenv("RABBIT_MQ_MANAGER_RETRY_EXCHANGE")
-	workerID, _ = strconv.Atoi(os.Getenv("WORKER_ID"))
+	numWorkers, _ = strconv.Atoi(os.Getenv("NUM_WORKERS"))
 }
 
 func main() {
 	qConn, err := rabbitmq.NewConnection(rabbitmq.Config{
-		URL:             rabbitMQURI,
-		Queue:           fmt.Sprintf("%s.%d", rabbitMQName, workerID),
-		Delay:           3,
-		RetryExchange:   rabbitMQRetryExchange,
-		MaxRetrySeconds: 300,
-		RetryDelay:      100,
-		Finish:          make(chan bool),
-		PrefetchCount:   1,
-		PrefetchSize:    0,
-		Global:          true,
+		URL:               rabbitMQURI,
+		Queue:             rabbitMQName,
+		Delay:             3,
+		RetryExchange:     rabbitMQRetryExchange,
+		MaxRetrySeconds:   300,
+		RetryDelay:        100,
+		Finish:            make(chan bool),
+		PrefetchCount:     1,
+		PrefetchSize:      0,
+		Global:            true,
+		MultipleConsumers: true,
+		NumConsumers:      numWorkers,
 	})
 	if err != nil {
 		logger.Error("rabbitmq.NewConnection Error", err)

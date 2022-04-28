@@ -44,7 +44,7 @@ func (p *processor) Process(routingKey string, b []byte) (err error) {
 	if err != nil {
 		logger.Error(err)
 	}
-	logger.Infof("ID: %d", data.ID)
+	logger.Infof("===================== ID: %d", data.ID)
 	defer logger.Info("finish process")
 	return nil
 }

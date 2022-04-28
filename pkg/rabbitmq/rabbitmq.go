@@ -25,10 +25,12 @@ type PublishChannel interface {
 
 // Connection -
 type Connection struct {
-	conn    *amqp.Connection
-	channel *ChannelAmqp
-	config  Config
-	Finish  chan bool
+	conn              *amqp.Connection
+	channel           *ChannelAmqp
+	config            Config
+	Finish            chan bool
+	MultipleConsumers bool
+	NumConsumers      int
 }
 
 // Processor -
@@ -57,9 +59,11 @@ func NewConnection(config Config) (*Connection, error) {
 	}
 
 	connection := &Connection{
-		conn:   conn,
-		config: config,
-		Finish: config.Finish,
+		conn:              conn,
+		config:            config,
+		Finish:            config.Finish,
+		MultipleConsumers: config.MultipleConsumers,
+		NumConsumers:      config.NumConsumers,
 	}
 
 	connection.startConnection()
@@ -146,10 +150,26 @@ func (c *Connection) startChannel() {
 // Consume -
 func (c *Connection) Consume(processor Processor) {
 	go func() {
+
 		for {
-			tasks, err := c.channel.Channel.Consume(c.config.Queue, c.config.Queue, false, false, false, false, nil)
+			isConsuming := false
+			qName := c.config.Queue
+			if !isConsuming && c.MultipleConsumers {
+				for i := 1; i <= c.NumConsumers; i++ {
+					name := fmt.Sprintf("%s.%d", c.config.Queue, i)
+					q, err := c.channel.QueueInspect(name)
+					if err != nil {
+						logger.Warn("inspect fail ", err)
+					} else if q.Consumers == 0 {
+						qName = name
+						break
+					}
+				}
+			}
+
+			tasks, err := c.channel.Channel.Consume(qName, qName, false, false, false, false, nil)
 			if err != nil {
-				logger.Error("consume fail", err)
+				logger.Error("consume fail ", err)
 
 				if c.channel.ShouldStop() {
 					break
@@ -157,6 +177,8 @@ func (c *Connection) Consume(processor Processor) {
 
 				time.Sleep(time.Second * 5)
 				continue
+			} else {
+				isConsuming = true
 			}
 
 			for task := range tasks {
