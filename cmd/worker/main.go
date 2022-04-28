@@ -27,12 +27,14 @@ func init() {
 }
 
 var rabbitMQURI string
+var rabbitMQExchange string
 var rabbitMQName string
 var rabbitMQRetryExchange string
 var numWorkers int
 
 func init() {
 	rabbitMQURI = os.Getenv("RABBIT_MQ_URI")
+	rabbitMQExchange = os.Getenv("RABBIT_MQ_WORKER_EXCHANGE")
 	rabbitMQName = os.Getenv("RABBIT_MQ_WORKER_QUEUE_NAME")
 	rabbitMQRetryExchange = os.Getenv("RABBIT_MQ_MANAGER_RETRY_EXCHANGE")
 	numWorkers, _ = strconv.Atoi(os.Getenv("NUM_WORKERS"))
@@ -52,6 +54,7 @@ func main() {
 		Global:            true,
 		MultipleConsumers: true,
 		NumConsumers:      numWorkers,
+		Exchange:          rabbitMQExchange,
 	})
 	if err != nil {
 		logger.Error("rabbitmq.NewConnection Error", err)

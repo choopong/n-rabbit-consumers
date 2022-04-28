@@ -25,12 +25,10 @@ type PublishChannel interface {
 
 // Connection -
 type Connection struct {
-	conn              *amqp.Connection
-	channel           *ChannelAmqp
-	config            Config
-	Finish            chan bool
-	MultipleConsumers bool
-	NumConsumers      int
+	conn    *amqp.Connection
+	channel *ChannelAmqp
+	config  Config
+	Finish  chan bool
 }
 
 // Processor -
@@ -59,11 +57,9 @@ func NewConnection(config Config) (*Connection, error) {
 	}
 
 	connection := &Connection{
-		conn:              conn,
-		config:            config,
-		Finish:            config.Finish,
-		MultipleConsumers: config.MultipleConsumers,
-		NumConsumers:      config.NumConsumers,
+		conn:   conn,
+		config: config,
+		Finish: config.Finish,
 	}
 
 	connection.startConnection()
@@ -150,24 +146,66 @@ func (c *Connection) startChannel() {
 // Consume -
 func (c *Connection) Consume(processor Processor) {
 	go func() {
+		queueName := c.config.Queue
 
 		for {
-			isConsuming := false
-			qName := c.config.Queue
-			if !isConsuming && c.MultipleConsumers {
-				for i := 1; i <= c.NumConsumers; i++ {
-					name := fmt.Sprintf("%s.%d", c.config.Queue, i)
-					q, err := c.channel.QueueInspect(name)
+
+			if queueName == c.config.Queue && c.config.MultipleConsumers {
+				for i := 1; i <= c.config.NumConsumers; i++ {
+					tempQueueName := fmt.Sprintf("%s.%d", c.config.Queue, i)
+					ch, err := c.conn.Channel()
 					if err != nil {
-						logger.Warn("inspect fail ", err)
-					} else if q.Consumers == 0 {
-						qName = name
+						logger.Warn("connect fail ", err)
 						break
 					}
+					q, err := ch.QueueInspect(tempQueueName)
+					if err != nil {
+						logger.Warn("inspect fail ", err)
+						if err.(*amqp.Error).Code == 404 {
+							ch2, err := c.conn.Channel()
+							if err != nil {
+								logger.Warn("connect fail ", err)
+								break
+							}
+							tempExchangeName := fmt.Sprintf("%s.%d", c.config.Exchange, i)
+							err = ch2.ExchangeDeclare(tempExchangeName, amqp.ExchangeTopic, true, false, false, true, nil)
+							if err != nil {
+								logger.Warn("create exchange fail ", err)
+								ch2.Close()
+								break
+							}
+							_, err = ch2.QueueDeclare(tempQueueName, true, false, false, true, nil)
+							if err != nil {
+								logger.Warn("create queue fail ", err)
+								ch2.Close()
+								break
+							}
+							err = ch2.QueueBind(tempQueueName, "*", tempExchangeName, true, nil)
+							if err != nil {
+								logger.Warn("bind queue fail ", err)
+								ch2.Close()
+								break
+							}
+							q, _ := ch2.QueueInspect(tempQueueName)
+							if q.Consumers == 0 {
+								queueName = tempQueueName
+								ch2.Close()
+								break
+							}
+							ch2.Close()
+						}
+					} else if q.Consumers == 0 {
+						queueName = tempQueueName
+						break
+					}
+					ch.Close()
+				}
+				if queueName == c.config.Queue {
+					continue
 				}
 			}
 
-			tasks, err := c.channel.Channel.Consume(qName, qName, false, false, false, false, nil)
+			tasks, err := c.channel.Channel.Consume(queueName, queueName, false, false, false, false, nil)
 			if err != nil {
 				logger.Error("consume fail ", err)
 
@@ -177,8 +215,6 @@ func (c *Connection) Consume(processor Processor) {
 
 				time.Sleep(time.Second * 5)
 				continue
-			} else {
-				isConsuming = true
 			}
 
 			for task := range tasks {

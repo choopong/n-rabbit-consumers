@@ -1,6 +1,7 @@
 package rabbitmq
 
 type Config struct {
+	Exchange          string
 	Queue             string
 	RetryExchange     string
 	MaxRetrySeconds   int
