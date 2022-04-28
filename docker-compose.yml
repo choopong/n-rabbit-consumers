@@ -1,0 +1,48 @@
+version: "3"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    ports:
+      - 5672:5672
+      - 15672:15672
+  manager-app:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    env_file:
+      - ".env"
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links:
+      - rabbitmq
+    command: "go run cmd/manager/main.go"
+  worker-app-a:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    environment:
+      - WORKER_ID=1
+    env_file:
+      - ".env"
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    command: "go run cmd/worker/main.go"
+  worker-app-b:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    environment:
+      - WORKER_ID=2
+    env_file:
+      - ".env"
+    restart: on-failure
+    depends_on:
+      - rabbitmq
+    links: 
+      - rabbitmq
+    command: "go run cmd/worker/main.go"
